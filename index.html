@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>FieldMile — Route &amp; Check-In Log</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.3.0/exceljs.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<style>
+  :root{
+    --navy:#14213D;
+    --navy-light:#1F3159;
+    --steel:#3B6E91;
+    --amber:#E8A33D;
+    --amber-dark:#B87A20;
+    --paper:#EEF1F4;
+    --card:#FFFFFF;
+    --ink:#1B1F27;
+    --ink-soft:#5B6472;
+    --line:#D8DEE5;
+    --success:#3F8B5C;
+    --danger:#C1443B;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:'Inter',system-ui,sans-serif;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .app{max-width:480px; margin:0 auto; min-height:100vh; background:var(--paper); padding-bottom:90px;}
+  header{
+    background:var(--navy); color:#fff; padding:18px 20px 16px;
+    position:sticky; top:0; z-index:20;
+    border-bottom:3px solid var(--amber);
+  }
+  header .title{
+    font-family:'Barlow Condensed',sans-serif; font-weight:700;
+    font-size:24px; letter-spacing:0.5px; text-transform:uppercase;
+    display:flex; align-items:center; gap:8px;
+  }
+  header .sub{font-size:12px; color:#9FB0CC; margin-top:2px;}
+  .status-row{display:flex; align-items:center; gap:8px; margin-top:10px;}
+  .dot{width:9px; height:9px; border-radius:50%; background:var(--ink-soft); flex-shrink:0;}
+  .dot.tracking{background:var(--amber); box-shadow:0 0 0 0 rgba(232,163,61,0.6); animation:pulse 1.6s infinite;}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(232,163,61,0.55);}
+    70%{box-shadow:0 0 0 8px rgba(232,163,61,0);}
+    100%{box-shadow:0 0 0 0 rgba(232,163,61,0);}
+  }
+  .status-text{font-size:13px; color:#D7E0EC;}
+  nav.tabs{
+    display:flex; background:var(--card); position:sticky; top:76px; z-index:19;
+    border-bottom:1px solid var(--line);
+  }
+  nav.tabs button{
+    flex:1; border:none; background:none; padding:12px 4px; font-family:'Inter';
+    font-size:13px; font-weight:600; color:var(--ink-soft); cursor:pointer;
+    border-bottom:3px solid transparent;
+  }
+  nav.tabs button.active{color:var(--navy); border-bottom-color:var(--amber);}
+  main{padding:16px;}
+  .card{
+    background:var(--card); border-radius:var(--radius); border:1px solid var(--line);
+    padding:16px; margin-bottom:14px;
+  }
+  .banner{
+    background:#FCEBEB; border:1px solid #F0B8B4; color:var(--danger);
+    border-radius:var(--radius); padding:10px 14px; font-size:13px; margin-bottom:14px;
+  }
+  .odo-wrap{display:flex; justify-content:center; margin:6px 0 14px;}
+  .odo{
+    display:flex; background:var(--navy); border-radius:6px; overflow:hidden;
+    box-shadow:inset 0 0 0 2px var(--navy-light);
+  }
+  .odo span{
+    font-family:'JetBrains Mono',monospace; font-weight:600; font-size:30px;
+    color:#fff; padding:8px 4px; min-width:20px; text-align:center;
+  }
+  .odo span.dot-sep{color:var(--amber); min-width:12px;}
+  .odo span.unit{
+    font-family:'Barlow Condensed'; font-size:14px; align-self:center;
+    color:var(--amber); padding:0 10px 0 4px; text-transform:uppercase; font-weight:600;
+  }
+  .timer{
+    text-align:center; font-family:'JetBrains Mono',monospace; font-size:15px;
+    color:var(--ink-soft); margin-bottom:14px;
+  }
+  .btn{
+    width:100%; padding:16px; border-radius:var(--radius); border:none;
+    font-family:'Barlow Condensed',sans-serif; font-weight:700; font-size:18px;
+    letter-spacing:0.5px; text-transform:uppercase; cursor:pointer;
+  }
+  .btn-start{background:var(--success); color:#fff;}
+  .btn-stop{background:var(--danger); color:#fff;}
+  .btn-secondary{background:none; border:1px solid var(--line); color:var(--ink-soft); font-size:13px; text-transform:none; font-family:'Inter'; font-weight:600; padding:10px;}
+  .row{display:flex; gap:10px;}
+  .fab{
+    position:fixed; bottom:20px; left:50%; transform:translateX(-50%);
+    max-width:448px; width:calc(100% - 32px);
+    background:var(--amber); color:var(--navy); border:none;
+    border-radius:999px; padding:15px 20px; font-family:'Barlow Condensed';
+    font-weight:700; font-size:16px; letter-spacing:0.5px; text-transform:uppercase;
+    box-shadow:0 4px 14px rgba(0,0,0,0.25); cursor:pointer; z-index:25;
+    display:flex; align-items:center; justify-content:center; gap:8px;
+  }
+  .fab:active{transform:translateX(-50%) scale(0.97);}
+  .entry{
+    border:1px solid var(--line); border-radius:var(--radius); padding:12px 14px; margin-bottom:10px;
+    background:var(--card);
+  }
+  .entry-top{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:6px;}
+  .entry-date{font-size:12px; color:var(--ink-soft); font-weight:600;}
+  .entry-miles{font-family:'JetBrains Mono',monospace; font-weight:600; color:var(--steel); font-size:15px;}
+  .entry-detail{font-size:13px; color:var(--ink-soft); margin:2px 0;}
+  .label-input{
+    width:100%; border:1px solid var(--line); border-radius:6px; padding:7px 9px;
+    font-size:13px; font-family:'Inter'; margin-top:6px; background:var(--paper);
+  }
+  .empty{
+    text-align:center; padding:40px 16px; color:var(--ink-soft); font-size:14px;
+  }
+  .empty .icon{font-size:32px; display:block; margin-bottom:8px; opacity:0.5;}
+  .summary-grid{display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:14px;}
+  .metric{background:var(--card); border:1px solid var(--line); border-radius:var(--radius); padding:14px;}
+  .metric .label{font-size:11px; text-transform:uppercase; letter-spacing:0.5px; color:var(--ink-soft); font-weight:600;}
+  .metric .value{font-family:'JetBrains Mono',monospace; font-size:22px; font-weight:600; color:var(--navy); margin-top:4px;}
+  .modal-overlay{
+    position:fixed; inset:0; background:rgba(20,33,61,0.55); display:flex;
+    align-items:center; justify-content:center; z-index:50; padding:20px;
+  }
+  .modal{
+    background:var(--card); border-radius:12px; padding:20px; width:100%; max-width:400px;
+  }
+  .modal h3{margin:0 0 4px; font-family:'Barlow Condensed'; font-size:19px; text-transform:uppercase; color:var(--navy);}
+  .modal .coord{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--ink-soft); margin-bottom:12px;}
+  .modal textarea{
+    width:100%; min-height:70px; border:1px solid var(--line); border-radius:8px;
+    padding:10px; font-family:'Inter'; font-size:14px; resize:vertical;
+  }
+  .modal .row{margin-top:14px;}
+  .btn-amber{background:var(--amber); color:var(--navy);}
+  small.hint{display:block; margin-top:10px; font-size:11px; color:var(--ink-soft); text-align:center;}
+.map-box{height:180px; border-radius:8px; overflow:hidden; margin-bottom:12px; border:1px solid var(--line);}
+.map-box-lg{height:340px; border-radius:8px; overflow:hidden; margin-bottom:14px; border:1px solid var(--line);}
+.leaflet-popup-content{font-family:'Inter',sans-serif; font-size:13px;}
+.view-map-btn{background:none; border:1px solid var(--line); color:var(--steel); font-size:12px; font-weight:600; padding:6px 10px; border-radius:6px; cursor:pointer; font-family:'Inter';}
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <header>
+    <div class="title">🧭 FieldMile</div>
+    <div class="sub">Route &amp; check-in log</div>
+    <div class="status-row" id="userRow" style="cursor:pointer;">
+      <div class="dot" style="background:var(--steel);"></div>
+      <div class="status-text" id="userBadge" style="text-decoration:underline;">Not signed in</div>
+    </div>
+    <div class="status-row">
+      <div class="dot" id="statusDot"></div>
+      <div class="status-text" id="statusText">Idle — no active trip</div>
+    </div>
+    <div class="status-row" id="dailyStatusRow">
+      <div class="dot" id="dailyDot"></div>
+      <div class="status-text" id="dailyStatusText">Not checked in today</div>
+    </div>
+    <div class="status-row">
+      <div class="dot" id="cloudDot" style="background:var(--ink-soft);"></div>
+      <div class="status-text" id="cloudStatus" style="font-size:11px;">Cloud sync not set up</div>
+    </div>
+  </header>
+
+  <nav class="tabs">
+    <button class="tab-btn active" data-tab="trip">Trip</button>
+    <button class="tab-btn" data-tab="trips">Trips</button>
+    <button class="tab-btn" data-tab="daily">Daily log</button>
+    <button class="tab-btn" data-tab="summary">Summary</button>
+  </nav>
+
+  <main>
+    <div id="errorBanner"></div>
+
+    <section id="tab-trip">
+      <div class="card">
+        <div class="odo-wrap">
+          <div class="odo" id="odoDisplay"></div>
+        </div>
+        <div class="timer" id="timerDisplay">00:00:00</div>
+        <button class="btn btn-start" id="tripToggleBtn">Start trip</button>
+        <div class="row" style="margin-top:10px;" id="cancelRow" style="display:none;">
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-trips" style="display:none;"></section>
+    <section id="tab-daily" style="display:none;"></section>
+    <section id="tab-summary" style="display:none;"></section>
+  </main>
+
+  <button class="fab" id="checkInFab">Check in</button>
+</div>
+
+<div id="modalRoot"></div>
+
+<script>
+(function(){
+
+const $ = (sel, el) => (el||document).querySelector(sel);
+const $all = (sel, el) => Array.from((el||document).querySelectorAll(sel));
+
+// ---------- storage abstraction (window.storage in artifact context, localStorage fallback standalone) ----------
+const store = {
+  async get(key, fallback){
+    try{
+      if(window.storage){
+        const r = await window.storage.get(key);
+        return r ? JSON.parse(r.value) : fallback;
+      }
+    }catch(e){}
+    try{
+      const v = localStorage.getItem(key);
+      return v ? JSON.parse(v) : fallback;
+    }catch(e){ return fallback; }
+  },
+  async set(key, value){
+    try{
+      if(window.storage){
+        await window.storage.set(key, JSON.stringify(value));
+        return;
+      }
+    }catch(e){}
+    try{ localStorage.setItem(key, JSON.stringify(value)); }catch(e){}
+  }
+};
+
+// ---------- state ----------
+let trips = [];
+let dailyLog = []; // [{id, checkInTime, checkInCoords, checkInNote, checkOutTime, checkOutCoords, checkOutNote}]
+let active = null; // {startTime, startCoords, lastCoords, distanceMi, path:[], watchId}
+let timerInterval = null;
+let currentUser = null; // {email, name} — identity only, not authentication
+
+// ---------- cloud sync (optional — app works fully offline without this) ----------
+// Fill these in with your Firebase project's config (Project settings → General → Your apps)
+// to enable the manager console. Leave as-is to run in local-only mode.
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyBA9IOzqKz6MhRq9__vSc3Res-DLdFF_0U",
+  authDomain: "pfi-mileage.firebaseapp.com",
+  projectId: "pfi-mileage",
+  storageBucket: "pfi-mileage.firebasestorage.app",
+  messagingSenderId: "790512656084",
+  appId: "1:790512656084:web:647e135cdea06ae04a2541"
+};
+
+let cloudReady = false;
+let db = null;
+
+function cloudConfigLooksValid(){
+  return !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.apiKey.indexOf('YOUR_') !== 0);
+}
+
+function renderCloudStatus(state){
+  const dot = $('#cloudDot'), text = $('#cloudStatus');
+  if(!text) return;
+  const map = {
+    'not-configured': ['Cloud sync not set up', 'var(--ink-soft)'],
+    'connecting': ['Connecting to cloud sync…', 'var(--ink-soft)'],
+    'connected': ['Cloud sync on — visible in manager console', 'var(--success)'],
+    'error': ['Cloud sync error — check connection', 'var(--danger)']
+  };
+  const [msg, color] = map[state] || ['', 'var(--ink-soft)'];
+  text.textContent = msg;
+  if(dot) dot.style.background = color;
+}
+
+async function connectCloud(){
+  if(!cloudConfigLooksValid()){ renderCloudStatus('not-configured'); return false; }
+  if(cloudReady) return true;
+  renderCloudStatus('connecting');
+  try{
+    if(!firebase.apps || !firebase.apps.length){ firebase.initializeApp(FIREBASE_CONFIG); }
+    await firebase.auth().signInAnonymously();
+    db = firebase.firestore();
+    cloudReady = true;
+    renderCloudStatus('connected');
+    return true;
+  }catch(e){
+    cloudReady = false;
+    renderCloudStatus('error');
+    return false;
+  }
+}
+
+async function initCloudSync(){
+  const ok = await connectCloud();
+  if(ok){ await pushUnsyncedData(); }
+}
+
+// ---------- access approval ----------
+// Returns true/false if it could verify against the approved list, or null if it
+// couldn't reach the cloud to check (offline / not configured).
+async function checkApproval(email){
+  if(!cloudConfigLooksValid()) return true; // approval gating is off entirely in local-only mode
+  const connected = await connectCloud();
+  if(!connected) return null;
+  try{
+    const doc = await db.collection('approvedEmails').doc(email).get();
+    return doc.exists;
+  }catch(e){
+    return null;
+  }
+}
+
+async function syncTechProfile(){
+  if(!cloudReady || !currentUser) return;
+  try{
+    await db.collection('techs').doc(currentUser.email).set({
+      email: currentUser.email,
+      name: currentUser.name || '',
+      lastSync: Date.now()
+    }, {merge:true});
+  }catch(e){}
+}
+
+async function syncTrip(trip){
+  if(!cloudReady || !currentUser){ return; }
+  try{
+    await syncTechProfile();
+    await db.collection('techs').doc(currentUser.email).collection('trips').doc(trip.id).set(trip);
+    trip.synced = true;
+    await store.set('fm_trips', trips);
+  }catch(e){ trip.synced = false; }
+}
+
+async function deleteTripCloud(tripId){
+  if(!cloudReady || !currentUser) return;
+  try{ await db.collection('techs').doc(currentUser.email).collection('trips').doc(tripId).delete(); }catch(e){}
+}
+
+async function syncDailyEntry(entry){
+  if(!cloudReady || !currentUser){ return; }
+  try{
+    await syncTechProfile();
+    await db.collection('techs').doc(currentUser.email).collection('dailyLog').doc(entry.id).set(entry);
+    entry.synced = true;
+    await store.set('fm_daily', dailyLog);
+  }catch(e){ entry.synced = false; }
+}
+
+async function deleteDailyCloud(entryId){
+  if(!cloudReady || !currentUser) return;
+  try{ await db.collection('techs').doc(currentUser.email).collection('dailyLog').doc(entryId).delete(); }catch(e){}
+}
+
+async function pushUnsyncedData(){
+  if(!cloudReady) return;
+  for(const t of trips){ if(!t.synced) await syncTrip(t); }
+  for(const e of dailyLog){ if(!e.synced) await syncDailyEntry(e); }
+}
+
+const R_MI = 3958.8;
+function haversineMi(lat1, lon1, lat2, lon2){
+  const toRad = d => d * Math.PI/180;
+  const dLat = toRad(lat2-lat1), dLon = toRad(lon2-lon1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1))*Math.cos(toRad(lat2))*Math.sin(dLon/2)**2;
+  return R_MI * 2*Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+function fmtTime(ts){
+  return new Date(ts).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'});
+}
+function fmtDateOnly(ts){
+  return new Date(ts).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+}
+function fmtDuration(sec){
+  const h = Math.floor(sec/3600), m = Math.floor((sec%3600)/60), s = Math.floor(sec%60);
+  return [h,m,s].map(n=>String(n).padStart(2,'0')).join(':');
+}
+function showError(msg){
+  $('#errorBanner').innerHTML = msg ? `<div class="banner">${msg}</div>` : '';
+}
+
+// ---------- identity (label only — no password, no verification) ----------
+function isValidEmail(v){
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
+}
+
+function renderUserBadge(){
+  const el = $('#userBadge');
+  if(!el) return;
+  el.textContent = currentUser ? (currentUser.name || currentUser.email) : 'Not signed in';
+}
+
+function openUserModal(required){
+  const root = $('#modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="userOverlay">
+      <div class="modal">
+        <h3>${currentUser ? 'Switch user' : 'Welcome to FieldMile'}</h3>
+        <div class="coord" style="margin-bottom:10px; font-family:'Inter'; font-size:13px;">
+          ${currentUser ? 'Update who is using this app on this device.' : 'Enter your email so your trips and check-ins are labeled with your name. This is not a password — anyone can use this device.'}
+        </div>
+        <input class="label-input" id="userEmailInput" placeholder="name@company.com" value="${currentUser ? currentUser.email.replace(/"/g,'&quot;') : ''}" style="margin-bottom:8px;">
+        <input class="label-input" id="userNameInput" placeholder="Display name (optional)" value="${currentUser && currentUser.name ? currentUser.name.replace(/"/g,'&quot;') : ''}">
+        <div id="userError"></div>
+        <div class="row" style="margin-top:14px;">
+          ${required ? '' : '<button class="btn btn-secondary" id="userCancel">Cancel</button>'}
+          <button class="btn btn-amber" id="userSave">${currentUser ? 'Save' : 'Continue'}</button>
+        </div>
+      </div>
+    </div>`;
+  if(!required){
+    $('#userCancel').onclick = ()=>{ root.innerHTML=''; };
+  }
+  $('#userSave').onclick = async ()=>{
+    const email = $('#userEmailInput').value.trim();
+    const name = $('#userNameInput').value.trim();
+    if(!isValidEmail(email)){
+      $('#userError').innerHTML = '<div class="banner">Enter a valid email address.</div>';
+      return;
+    }
+    const saveBtn = $('#userSave');
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Checking access…';
+    const approved = await checkApproval(email);
+    if(approved === false){
+      renderAccessBlocked(email, 'denied', !required);
+      return;
+    }
+    if(approved === null){
+      renderAccessBlocked(email, 'offline', !required);
+      return;
+    }
+    currentUser = { email, name };
+    await store.set('fm_user', currentUser);
+    await store.set('fm_access', { email, approved:true, checkedAt: Date.now() });
+    root.innerHTML = '';
+    renderUserBadge();
+    if(required){ startApp(); }
+  };
+}
+
+function renderAccessBlocked(email, reason, canCancel){
+  const messages = {
+    denied: `<strong>${email.replace(/</g,'&lt;')}</strong> hasn't been approved for FieldMile access yet. Ask your manager to add this email in the manager console, then try again.`,
+    revoked: `Access for <strong>${email.replace(/</g,'&lt;')}</strong> has been removed. Contact your manager if you believe this is a mistake.`,
+    offline: `Can't verify access for <strong>${email.replace(/</g,'&lt;')}</strong> right now — connect to the internet and try again.`
+  };
+  const root = $('#modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="blockedOverlay">
+      <div class="modal">
+        <h3>${reason === 'revoked' ? 'Access removed' : 'Access not approved'}</h3>
+        <div class="coord" style="margin-bottom:14px; font-family:'Inter'; font-size:13px;">${messages[reason]}</div>
+        <div class="row">
+          ${canCancel ? '<button class="btn btn-secondary" id="blockedCancel">Cancel</button>' : ''}
+          <button class="btn btn-amber" id="blockedRetry">Try again</button>
+        </div>
+      </div>
+    </div>`;
+  if(canCancel){ $('#blockedCancel').onclick = ()=>{ root.innerHTML=''; }; }
+  $('#blockedRetry').onclick = ()=> location.reload();
+}
+
+async function verifyReturningUser(){
+  if(!cloudConfigLooksValid()) return true;
+  const connected = await connectCloud();
+  if(!connected){
+    const cached = await store.get('fm_access', null);
+    if(cached && cached.email === currentUser.email && cached.approved) return true;
+    renderAccessBlocked(currentUser.email, 'offline', false);
+    return false;
+  }
+  try{
+    const doc = await db.collection('approvedEmails').doc(currentUser.email).get();
+    if(doc.exists){
+      await store.set('fm_access', { email:currentUser.email, approved:true, checkedAt:Date.now() });
+      return true;
+    }else{
+      const cached = await store.get('fm_access', null);
+      currentUser = null;
+      await store.set('fm_user', null);
+      renderAccessBlocked(cached ? cached.email : '(this device)', 'revoked', false);
+      return false;
+    }
+  }catch(e){
+    const cached = await store.get('fm_access', null);
+    if(cached && cached.approved) return true;
+    renderAccessBlocked(currentUser.email, 'offline', false);
+    return false;
+  }
+}
+
+$('#userBadge').addEventListener('click', ()=> openUserModal(false));
+
+// ---------- odometer render ----------
+function renderOdo(miles){
+  const str = miles.toFixed(2);
+  const [whole, dec] = str.split('.');
+  const wrap = $('#odoDisplay');
+  wrap.innerHTML = '';
+  whole.split('').forEach(ch=>{
+    const s = document.createElement('span'); s.textContent = ch; wrap.appendChild(s);
+  });
+  const sep = document.createElement('span'); sep.className='dot-sep'; sep.textContent='.'; wrap.appendChild(sep);
+  dec.split('').forEach(ch=>{
+    const s = document.createElement('span'); s.textContent = ch; wrap.appendChild(s);
+  });
+  const unit = document.createElement('span'); unit.className='unit'; unit.textContent='mi'; wrap.appendChild(unit);
+}
+
+// ---------- geolocation ----------
+function getPositionOnce(){
+  return new Promise((resolve, reject)=>{
+    if(!navigator.geolocation){ reject(new Error('Geolocation is not supported on this device/browser.')); return; }
+    navigator.geolocation.getCurrentPosition(
+      pos => resolve(pos),
+      err => reject(err),
+      { enableHighAccuracy:true, timeout:12000, maximumAge:0 }
+    );
+  });
+}
+
+function geoErrorMessage(err){
+  if(err.code === 1) return 'Location permission denied. Enable location access for this page in your browser settings.';
+  if(err.code === 2) return 'Location unavailable right now. Move to an open area and try again.';
+  if(err.code === 3) return 'Location request timed out. Try again.';
+  return err.message || 'Could not get your location.';
+}
+
+// ---------- trip control ----------
+async function startTrip(){
+  showError('');
+  try{
+    const pos = await getPositionOnce();
+    const coords = {lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
+    active = {
+      startTime: Date.now(),
+      startCoords: coords,
+      lastCoords: coords,
+      distanceMi: 0,
+      startLabel: '',
+      endLabel: ''
+    };
+    await persistActive();
+    beginWatch();
+    startTimer();
+    renderTripTab();
+    renderStatus();
+  }catch(err){
+    showError(geoErrorMessage(err));
+  }
+}
+
+function beginWatch(){
+  if(!navigator.geolocation) return;
+  active.watchId = navigator.geolocation.watchPosition(
+    pos => {
+      const c = {lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
+      if(c.acc && c.acc > 75){ return; } // too imprecise, skip
+      const seg = haversineMi(active.lastCoords.lat, active.lastCoords.lon, c.lat, c.lon);
+      // filter GPS jumps: implausible speed (>110 mph over the elapsed interval) or micro-jitter under 5m
+      const segFt = seg * 5280;
+      if(segFt < 16){ return; } // jitter, ignore
+      if(seg < 40){ // sane single-hop distance guard
+        active.distanceMi += seg;
+      }
+      active.lastCoords = c;
+      renderOdo(active.distanceMi);
+      persistActive();
+    },
+    err => { /* keep trip running, just note the issue softly */ },
+    { enableHighAccuracy:true, maximumAge:0, timeout:15000 }
+  );
+}
+
+function startTimer(){
+  clearInterval(timerInterval);
+  timerInterval = setInterval(()=>{
+    if(!active) return;
+    const sec = (Date.now() - active.startTime)/1000;
+    $('#timerDisplay').textContent = fmtDuration(sec);
+  }, 1000);
+}
+
+async function stopTrip(){
+  if(!active) return;
+  if(active.watchId != null && navigator.geolocation){ navigator.geolocation.clearWatch(active.watchId); }
+  clearInterval(timerInterval);
+  const endTime = Date.now();
+  const trip = {
+    id: 't' + endTime + Math.random().toString(36).slice(2,6),
+    startTime: active.startTime,
+    endTime,
+    durationSec: (endTime - active.startTime)/1000,
+    miles: Math.round(active.distanceMi * 100)/100,
+    startCoords: active.startCoords,
+    endCoords: active.lastCoords,
+    startLabel: active.startLabel || '',
+    endLabel: active.endLabel || '',
+    ticketReason: '',
+    loggedBy: currentUser ? {email:currentUser.email, name:currentUser.name} : null,
+    synced: false
+  };
+  trips.unshift(trip);
+  await store.set('fm_trips', trips);
+  active = null;
+  await store.set('fm_active', null);
+  renderOdo(0);
+  $('#timerDisplay').textContent = '00:00:00';
+  renderTripTab();
+  renderStatus();
+  renderTrips();
+  renderSummary();
+  syncTrip(trip);
+}
+
+async function cancelTrip(){
+  if(!active) return;
+  if(active.watchId != null && navigator.geolocation){ navigator.geolocation.clearWatch(active.watchId); }
+  clearInterval(timerInterval);
+  active = null;
+  await store.set('fm_active', null);
+  renderOdo(0);
+  $('#timerDisplay').textContent = '00:00:00';
+  renderTripTab();
+  renderStatus();
+}
+
+async function persistActive(){
+  await store.set('fm_active', active ? {
+    startTime:active.startTime, startCoords:active.startCoords, lastCoords:active.lastCoords,
+    distanceMi:active.distanceMi, startLabel:active.startLabel, endLabel:active.endLabel
+  } : null);
+}
+
+// ---------- map helper ----------
+const mapInstances = {};
+
+function createMap(containerId, points, opts={}){
+  if(!window.L){ return null; }
+  if(mapInstances[containerId]){ mapInstances[containerId].remove(); delete mapInstances[containerId]; }
+  const el = document.getElementById(containerId);
+  if(!el) return null;
+  const map = L.map(containerId, { attributionControl:true }).setView([points[0].lat, points[0].lon], opts.zoom||16);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom:19,
+    attribution:'&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  points.forEach(p=>{
+    const m = L.marker([p.lat, p.lon]).addTo(map);
+    if(p.label) m.bindPopup(p.label);
+  });
+  if(points.length > 1){
+    map.fitBounds(L.latLngBounds(points.map(p=>[p.lat,p.lon])), {padding:[28,28]});
+  }
+  mapInstances[containerId] = map;
+  setTimeout(()=>{ if(mapInstances[containerId]) mapInstances[containerId].invalidateSize(); }, 60);
+  return map;
+}
+
+function removeMap(containerId){
+  if(mapInstances[containerId]){ mapInstances[containerId].remove(); delete mapInstances[containerId]; }
+}
+
+// ---------- daily check-in / check-out ----------
+function currentOpenEntry(){
+  return dailyLog.find(e => !e.checkOutTime) || null;
+}
+
+function renderDailyStatus(){
+  const dot = $('#dailyDot'), text = $('#dailyStatusText'), fab = $('#checkInFab');
+  const open = currentOpenEntry();
+  if(open){
+    dot.classList.add('tracking');
+    text.textContent = `Checked in ${fmtTime(open.checkInTime)} — not checked out yet`;
+    fab.textContent = 'Check out';
+    fab.style.background = 'var(--danger)';
+    fab.style.color = '#fff';
+  }else{
+    dot.classList.remove('tracking');
+    text.textContent = 'Not checked in today';
+    fab.textContent = 'Check in';
+    fab.style.background = 'var(--amber)';
+    fab.style.color = 'var(--navy)';
+  }
+}
+
+function openDailyModal(mode, coords, err, open){
+  const root = $('#modalRoot');
+  const isCheckOut = mode === 'checkout';
+  const coordText = coords ? `${coords.lat.toFixed(5)}, ${coords.lon.toFixed(5)} · ±${Math.round(coords.acc||0)}m` : 'Location unavailable';
+  const contextLine = isCheckOut
+    ? `<div class="coord" style="margin-bottom:6px;">Checked in at ${fmtTime(open.checkInTime)} · ${fmtDuration((Date.now()-open.checkInTime)/1000)} elapsed</div>`
+    : '';
+  root.innerHTML = `
+    <div class="modal-overlay" id="dailyOverlay">
+      <div class="modal">
+        <h3>${isCheckOut ? 'Check out' : 'Check in'}</h3>
+        ${contextLine}
+        ${coords ? `<div class="map-box" id="dailyMap"></div>` : ''}
+        <div class="coord">${coordText}</div>
+        ${err ? `<div class="banner">${err}</div>` : ''}
+        <textarea id="dailyNote" placeholder="${isCheckOut ? 'End of day notes (optional)' : 'Site name, ticket number, or note (optional)'}"></textarea>
+        <div class="row">
+          <button class="btn btn-secondary" id="dailyCancel">Cancel</button>
+          <button class="btn btn-amber" id="dailySave" ${coords ? '' : 'disabled'}>${isCheckOut ? 'Save check-out' : 'Save check-in'}</button>
+        </div>
+      </div>
+    </div>`;
+  if(coords){ createMap('dailyMap', [{lat:coords.lat, lon:coords.lon}], {zoom:16}); }
+  $('#dailyCancel').onclick = ()=>{ removeMap('dailyMap'); root.innerHTML=''; };
+  const saveBtn = $('#dailySave');
+  if(saveBtn){
+    saveBtn.onclick = async ()=>{
+      const note = $('#dailyNote').value.trim();
+      if(isCheckOut){
+        open.checkOutTime = Date.now();
+        open.checkOutCoords = coords;
+        open.checkOutNote = note;
+        open.synced = false;
+      }else{
+        const entry = {
+          id: 'd' + Date.now() + Math.random().toString(36).slice(2,6),
+          checkInTime: Date.now(),
+          checkInCoords: coords,
+          checkInNote: note,
+          checkOutTime: null,
+          checkOutCoords: null,
+          checkOutNote: '',
+          loggedBy: currentUser ? {email:currentUser.email, name:currentUser.name} : null,
+          synced: false
+        };
+        dailyLog.unshift(entry);
+      }
+      await store.set('fm_daily', dailyLog);
+      removeMap('dailyMap');
+      root.innerHTML = '';
+      renderDailyStatus();
+      renderDailyLog();
+      renderSummary();
+      syncDailyEntry(isCheckOut ? open : dailyLog[0]);
+    };
+  }
+}
+
+async function handleCheckInOut(){
+  const open = currentOpenEntry();
+  const mode = open ? 'checkout' : 'checkin';
+  const root = $('#modalRoot');
+  root.innerHTML = `<div class="modal-overlay"><div class="modal"><h3>${mode==='checkout'?'Check out':'Check in'}</h3><div class="coord">Getting your location…</div></div></div>`;
+  try{
+    const pos = await getPositionOnce();
+    const coords = {lat:pos.coords.latitude, lon:pos.coords.longitude, acc:pos.coords.accuracy};
+    openDailyModal(mode, coords, null, open);
+  }catch(err){
+    openDailyModal(mode, null, geoErrorMessage(err), open);
+  }
+}
+
+// ---------- rendering ----------
+function renderStatus(){
+  const dot = $('#statusDot'), text = $('#statusText'), toggleBtn = $('#tripToggleBtn'), cancelRow = $('#cancelRow');
+  if(active){
+    dot.classList.add('tracking');
+    text.textContent = 'Trip in progress — tracking location';
+    toggleBtn.textContent = 'Stop trip';
+    toggleBtn.className = 'btn btn-stop';
+    cancelRow.style.display = 'flex';
+    cancelRow.innerHTML = '<button class="btn btn-secondary" id="cancelTripBtn" style="width:100%;">Discard this trip</button>';
+    $('#cancelTripBtn').onclick = ()=>{ if(confirm('Discard the current trip without saving it?')) cancelTrip(); };
+  }else{
+    dot.classList.remove('tracking');
+    text.textContent = 'Idle — no active trip';
+    toggleBtn.textContent = 'Start trip';
+    toggleBtn.className = 'btn btn-start';
+    cancelRow.style.display = 'none';
+    cancelRow.innerHTML = '';
+  }
+}
+
+function renderTripTab(){
+  renderOdo(active ? active.distanceMi : 0);
+  if(active){
+    const sec = (Date.now() - active.startTime)/1000;
+    $('#timerDisplay').textContent = fmtDuration(sec);
+  }else{
+    $('#timerDisplay').textContent = '00:00:00';
+  }
+}
+
+function renderTrips(){
+  const el = $('#tab-trips');
+  if(trips.length === 0){
+    el.innerHTML = `<div class="empty"><span class="icon">🗺️</span>No trips logged yet.<br>Start a trip from the Trip tab.</div>`;
+    return;
+  }
+  el.innerHTML = `<div class="row" style="margin-bottom:12px;"><button class="btn btn-secondary" id="exportBtn" style="width:100%;">Export mileage sheet (.xlsx)</button></div>` +
+    trips.map(t => `
+      <div class="entry" data-id="${t.id}">
+        <div class="entry-top">
+          <span class="entry-date">${fmtDateOnly(t.startTime)}</span>
+          <span class="entry-miles">${t.miles.toFixed(2)} mi</span>
+        </div>
+        <div class="entry-detail">${fmtTime(t.startTime)} → ${fmtTime(t.endTime)} · ${fmtDuration(t.durationSec)}</div>
+        ${t.loggedBy ? `<div class="entry-detail" style="color:var(--steel);">Logged by ${(t.loggedBy.name || t.loggedBy.email).replace(/</g,'&lt;')}</div>` : ''}
+        <input class="label-input start-label" placeholder="Origination building #" value="${(t.startLabel||'').replace(/"/g,'&quot;')}">
+        <input class="label-input end-label" placeholder="Destination building #" value="${(t.endLabel||'').replace(/"/g,'&quot;')}">
+        <input class="label-input ticket-reason" placeholder="Ticket number / reason" value="${(t.ticketReason||'').replace(/"/g,'&quot;')}">
+        <div class="row" style="margin-top:8px;">
+          <button class="btn btn-secondary delete-trip" style="width:100%;">Delete trip</button>
+        </div>
+      </div>
+    `).join('');
+
+  $all('.entry', el).forEach(entryEl=>{
+    const id = entryEl.dataset.id;
+    entryEl.querySelector('.start-label').addEventListener('change', async e=>{
+      const t = trips.find(x=>x.id===id); if(t){ t.startLabel = e.target.value; await store.set('fm_trips', trips); syncTrip(t); }
+    });
+    entryEl.querySelector('.end-label').addEventListener('change', async e=>{
+      const t = trips.find(x=>x.id===id); if(t){ t.endLabel = e.target.value; await store.set('fm_trips', trips); syncTrip(t); }
+    });
+    entryEl.querySelector('.ticket-reason').addEventListener('change', async e=>{
+      const t = trips.find(x=>x.id===id); if(t){ t.ticketReason = e.target.value; await store.set('fm_trips', trips); syncTrip(t); }
+    });
+    entryEl.querySelector('.delete-trip').addEventListener('click', async ()=>{
+      if(!confirm('Delete this trip? This cannot be undone.')) return;
+      trips = trips.filter(x=>x.id!==id);
+      await store.set('fm_trips', trips);
+      deleteTripCloud(id);
+      renderTrips(); renderSummary();
+    });
+  });
+
+  const exportBtn = $('#exportBtn');
+  if(exportBtn) exportBtn.onclick = exportTripsXlsx;
+}
+
+function renderDailyLog(){
+  const el = $('#tab-daily');
+  if(dailyLog.length === 0){
+    el.innerHTML = `<div class="empty"><span class="icon">📍</span>No days logged yet.<br>Tap "Check in" below to start your day.</div>`;
+    return;
+  }
+  const allPoints = [];
+  dailyLog.forEach(e=>{
+    if(e.checkInCoords) allPoints.push({lat:e.checkInCoords.lat, lon:e.checkInCoords.lon, label:`Check in ${fmtTime(e.checkInTime)}${e.checkInNote ? ' — '+e.checkInNote.replace(/</g,'&lt;') : ''}`});
+    if(e.checkOutCoords) allPoints.push({lat:e.checkOutCoords.lat, lon:e.checkOutCoords.lon, label:`Check out ${fmtTime(e.checkOutTime)}${e.checkOutNote ? ' — '+e.checkOutNote.replace(/</g,'&lt;') : ''}`});
+  });
+
+  el.innerHTML =
+    ((allPoints.length > 0) ? `<div class="row" style="margin-bottom:12px;"><button class="btn btn-secondary" id="viewAllMapBtn" style="width:100%;">View all locations on map</button></div>` : '') +
+    (dailyLog.length > 0 ? `<div class="row" style="margin-bottom:12px;"><button class="btn btn-secondary" id="exportDailyBtn" style="width:100%;">Export daily log to CSV</button></div>` : '') +
+    dailyLog.map(e => {
+      const hasBoth = e.checkInCoords && e.checkOutCoords;
+      const mapPoints = [];
+      if(e.checkInCoords) mapPoints.push({lat:e.checkInCoords.lat, lon:e.checkInCoords.lon, label:'Check in'});
+      if(e.checkOutCoords) mapPoints.push({lat:e.checkOutCoords.lat, lon:e.checkOutCoords.lon, label:'Check out'});
+      return `
+      <div class="entry" data-id="${e.id}">
+        <div class="entry-top">
+          <span class="entry-date">${fmtDateOnly(e.checkInTime)}</span>
+          ${e.checkOutTime ? `<span class="entry-miles">${fmtDuration((e.checkOutTime - e.checkInTime)/1000)}</span>` : `<span class="entry-miles" style="color:var(--amber-dark);">In progress</span>`}
+        </div>
+        <div class="entry-detail">In: ${fmtTime(e.checkInTime)}${e.checkInNote ? ' — '+e.checkInNote.replace(/</g,'&lt;') : ''}</div>
+        <div class="entry-detail">${e.checkOutTime ? 'Out: '+fmtTime(e.checkOutTime)+(e.checkOutNote ? ' — '+e.checkOutNote.replace(/</g,'&lt;') : '') : 'Out: not checked out yet'}</div>
+        ${e.loggedBy ? `<div class="entry-detail" style="color:var(--steel);">Logged by ${(e.loggedBy.name || e.loggedBy.email).replace(/</g,'&lt;')}</div>` : ''}
+        ${mapPoints.length ? `<button class="view-map-btn toggle-map" data-id="${e.id}" style="margin-top:6px;">View on map</button>` : ''}
+        <div class="map-box" id="map-${e.id}" style="display:none;"></div>
+        <div class="row" style="margin-top:8px;">
+          <button class="btn btn-secondary delete-daily" style="width:100%;">Delete entry</button>
+        </div>
+      </div>
+    `;}).join('');
+
+  $all('.toggle-map', el).forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      const id = btn.dataset.id;
+      const box = document.getElementById('map-'+id);
+      const isOpen = box.style.display !== 'none';
+      if(isOpen){
+        removeMap('map-'+id);
+        box.style.display = 'none';
+        btn.textContent = 'View on map';
+      }else{
+        const e = dailyLog.find(x=>x.id===id);
+        const pts = [];
+        if(e.checkInCoords) pts.push({lat:e.checkInCoords.lat, lon:e.checkInCoords.lon, label:'Check in — '+fmtTime(e.checkInTime)});
+        if(e.checkOutCoords) pts.push({lat:e.checkOutCoords.lat, lon:e.checkOutCoords.lon, label:'Check out — '+fmtTime(e.checkOutTime)});
+        box.style.display = 'block';
+        createMap('map-'+id, pts, {zoom:15});
+        btn.textContent = 'Hide map';
+      }
+    });
+  });
+
+  $all('.delete-daily', el).forEach(btn=>{
+    btn.addEventListener('click', async (e)=>{
+      const id = e.target.closest('.entry').dataset.id;
+      removeMap('map-'+id);
+      if(!confirm('Delete this day\'s log entry?')) return;
+      dailyLog = dailyLog.filter(x=>x.id!==id);
+      await store.set('fm_daily', dailyLog);
+      deleteDailyCloud(id);
+      renderDailyLog(); renderSummary(); renderDailyStatus();
+    });
+  });
+
+  const viewAllBtn = $('#viewAllMapBtn');
+  if(viewAllBtn) viewAllBtn.onclick = ()=> openAllLocationsMap(allPoints);
+  const exportBtn = $('#exportDailyBtn');
+  if(exportBtn) exportBtn.onclick = exportDailyCsv;
+}
+
+function openAllLocationsMap(points){
+  const root = $('#modalRoot');
+  root.innerHTML = `
+    <div class="modal-overlay" id="allMapOverlay">
+      <div class="modal" style="max-width:460px;">
+        <h3>All check-in/out locations</h3>
+        <div class="map-box-lg" id="allLocationsMap"></div>
+        <button class="btn btn-secondary" id="allMapClose" style="width:100%;">Close</button>
+      </div>
+    </div>`;
+  createMap('allLocationsMap', points);
+  $('#allMapClose').onclick = ()=>{ removeMap('allLocationsMap'); root.innerHTML=''; };
+}
+
+function exportDailyCsv(){
+  const ownEntries = dailyLog.filter(e => !e.loggedBy || (currentUser && e.loggedBy.email === currentUser.email));
+  const header = ['Technician','Date','Check-in time','Check-in note','Check-in lat','Check-in lon','Check-out time','Check-out note','Check-out lat','Check-out lon','Hours worked'];
+  const rows = ownEntries.map(e=>[
+    e.loggedBy ? (e.loggedBy.name || e.loggedBy.email).replace(/,/g,';') : '',
+    fmtDateOnly(e.checkInTime),
+    new Date(e.checkInTime).toLocaleTimeString(),
+    (e.checkInNote||'').replace(/,/g,';'),
+    e.checkInCoords ? e.checkInCoords.lat.toFixed(6) : '',
+    e.checkInCoords ? e.checkInCoords.lon.toFixed(6) : '',
+    e.checkOutTime ? new Date(e.checkOutTime).toLocaleTimeString() : '',
+    (e.checkOutNote||'').replace(/,/g,';'),
+    e.checkOutCoords ? e.checkOutCoords.lat.toFixed(6) : '',
+    e.checkOutCoords ? e.checkOutCoords.lon.toFixed(6) : '',
+    e.checkOutTime ? ((e.checkOutTime - e.checkInTime)/3600000).toFixed(2) : ''
+  ]);
+  const csv = [header, ...rows].map(r=>r.join(',')).join('\n');
+  const blob = new Blob([csv], {type:'text/csv'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const namePart = currentUser ? '-' + currentUser.email.split('@')[0] : '';
+  a.href = url; a.download = `fieldmile-daily-log${namePart}-${new Date().toISOString().slice(0,10)}.csv`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function renderSummary(){
+  const el = $('#tab-summary');
+  const now = new Date();
+  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+  const startOfWeek = startOfDay - (now.getDay())*86400000;
+  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
+
+  const sum = (filterFn) => trips.filter(t=>filterFn(t.startTime)).reduce((a,t)=>a+t.miles,0);
+  const todayMi = sum(ts=>ts>=startOfDay);
+  const weekMi = sum(ts=>ts>=startOfWeek);
+  const monthMi = sum(ts=>ts>=startOfMonth);
+  const totalMi = trips.reduce((a,t)=>a+t.miles,0);
+
+  const completed = dailyLog.filter(e=>e.checkOutTime);
+  const hoursSum = (filterFn) => completed.filter(e=>filterFn(e.checkInTime)).reduce((a,e)=>a+(e.checkOutTime-e.checkInTime)/3600000, 0);
+  const hoursToday = hoursSum(ts=>ts>=startOfDay);
+  const hoursWeek = hoursSum(ts=>ts>=startOfWeek);
+  const openEntry = currentOpenEntry();
+
+  el.innerHTML = `
+    <div class="summary-grid">
+      <div class="metric"><div class="label">Today</div><div class="value">${todayMi.toFixed(1)} mi</div></div>
+      <div class="metric"><div class="label">This week</div><div class="value">${weekMi.toFixed(1)} mi</div></div>
+      <div class="metric"><div class="label">This month</div><div class="value">${monthMi.toFixed(1)} mi</div></div>
+      <div class="metric"><div class="label">All time</div><div class="value">${totalMi.toFixed(1)} mi</div></div>
+    </div>
+    <div class="summary-grid">
+      <div class="metric"><div class="label">Hours today</div><div class="value">${hoursToday.toFixed(1)}</div></div>
+      <div class="metric"><div class="label">Hours this week</div><div class="value">${hoursWeek.toFixed(1)}</div></div>
+    </div>
+    ${openEntry ? `<div class="banner" style="background:#FAEEDA; border-color:#EF9F27; color:var(--amber-dark);">Currently checked in since ${fmtTime(openEntry.checkInTime)} — remember to check out.</div>` : ''}
+    <div class="card">
+      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:4px;">Total trips logged</div>
+      <div style="font-family:'JetBrains Mono'; font-size:20px; font-weight:600; color:var(--navy);">${trips.length}</div>
+    </div>
+    <div class="card">
+      <div style="font-size:13px; color:var(--ink-soft); margin-bottom:4px;">Days logged</div>
+      <div style="font-family:'JetBrains Mono'; font-size:20px; font-weight:600; color:var(--navy);">${dailyLog.length}</div>
+    </div>
+  `;
+}
+
+async function exportTripsXlsx(){
+  const ownTrips = trips.filter(t => !t.loggedBy || (currentUser && t.loggedBy.email === currentUser.email));
+  if(ownTrips.length === 0){ alert('No trips to export yet.'); return; }
+  if(typeof ExcelJS === 'undefined'){
+    alert('The Excel export library needs an internet connection to load the first time. Connect and try again.');
+    return;
+  }
+
+  const wb = new ExcelJS.Workbook();
+  wb.calcProperties.fullCalcOnLoad = true;
+  const techLabel = currentUser ? `Technician: ${currentUser.name ? currentUser.name+' — ' : ''}${currentUser.email}` : 'Technician: (not signed in)';
+
+  const byWeek = {};
+  ownTrips.slice().sort((a,b)=>a.startTime-b.startTime).forEach(t=>{
+    const d = new Date(t.startTime);
+    const sunday = new Date(d.getFullYear(), d.getMonth(), d.getDate()-d.getDay());
+    const key = sunday.toISOString().slice(0,10);
+    (byWeek[key] = byWeek[key] || []).push(t);
+  });
+
+  const usedNames = {};
+  Object.keys(byWeek).sort().forEach(weekKey=>{
+    const sheetDate = new Date(weekKey + 'T00:00:00');
+    let name = 'Week of ' + sheetDate.toLocaleDateString('en-US',{month:'numeric',day:'numeric',year:'2-digit'});
+    name = name.replace(/[\\/*?:[\]]/g,'-').slice(0,31);
+    if(usedNames[name]){ usedNames[name]++; name = (name.slice(0,28) + '-' + usedNames[name]); } else { usedNames[name] = 1; }
+    const ws = wb.addWorksheet(name);
+    buildMileageSheet(ws, byWeek[weekKey], techLabel);
+  });
+
+  const buffer = await wb.xlsx.writeBuffer();
+  const blob = new Blob([buffer], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const namePart = currentUser ? '-' + currentUser.email.split('@')[0] : '';
+  a.href = url; a.download = `mileage-sheet${namePart}-${new Date().toISOString().slice(0,10)}.xlsx`;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function buildMileageSheet(ws, weekTrips, techLabel){
+  ws.columns = [
+    {width:8.86}, {width:11.14}, {width:11.14}, {width:23.57}, {width:12.0}, {width:12.71}, {width:10.0}
+  ];
+
+  const headFont = {name:'Arial', size:9, bold:true};
+  const bodyFont = {name:'Arial', size:9};
+  const centerMid = {horizontal:'center', vertical:'middle'};
+  const med = {style:'medium'};
+  const O = 1; // row offset to make room for the technician label above the template grid
+
+  ws.mergeCells('A1:G1');
+  ws.getCell('A1').value = techLabel;
+  ws.getCell('A1').font = {name:'Arial', size:10, bold:true};
+  ws.getCell('A1').alignment = {horizontal:'left', vertical:'middle'};
+  ws.getRow(1).height = 18;
+
+  ws.mergeCells(`E${1+O}:G${1+O}`);
+  ws.getCell(`E${1+O}`).value = 'Odometer Readings';
+  ['A','B','C','D','E','F','G'].forEach(c=>{ ws.getCell(`${c}${1+O}`).border = {top:med}; });
+  ws.getCell(`E${1+O}`).font = headFont;
+  ws.getCell(`E${1+O}`).alignment = centerMid;
+
+  ws.mergeCells(`A${2+O}:A${3+O}`); ws.getCell(`A${2+O}`).value='Date';
+  ws.mergeCells(`D${2+O}:D${3+O}`); ws.getCell(`D${2+O}`).value='Ticket Number/Reason';
+  ws.mergeCells(`E${2+O}:E${3+O}`); ws.getCell(`E${2+O}`).value='Start';
+  ws.mergeCells(`F${2+O}:F${3+O}`); ws.getCell(`F${2+O}`).value='Stop';
+  ws.getCell(`B${2+O}`).value='Origination';
+  ws.getCell(`C${2+O}`).value='Destination';
+  ws.getCell(`G${2+O}`).value='Miles';
+  ws.getCell(`B${3+O}`).value='Building #';
+  ws.getCell(`C${3+O}`).value='Building #';
+  ws.getCell(`G${3+O}`).value='this trip';
+
+  [`A${2+O}`,`B${2+O}`,`C${2+O}`,`D${2+O}`,`E${2+O}`,`F${2+O}`,`G${2+O}`,`B${3+O}`,`C${3+O}`,`G${3+O}`].forEach(c=>{
+    const cell = ws.getCell(c);
+    cell.font = headFont;
+    cell.alignment = centerMid;
+  });
+  [`A${3+O}`,`B${3+O}`,`C${3+O}`,`D${3+O}`,`E${3+O}`,`F${3+O}`,`G${3+O}`].forEach(c=> ws.getCell(c).border = {bottom:med});
+
+  const dataRowCount = Math.max(33, weekTrips.length);
+  const firstRow = 4+O;
+  for(let i=0;i<dataRowCount;i++){
+    const r = firstRow+i;
+    const t = weekTrips[i];
+    if(t){
+      const dc = ws.getCell(`A${r}`);
+      dc.value = new Date(t.startTime);
+      dc.numFmt = 'm/d/yy';
+      ws.getCell(`B${r}`).value = t.startLabel || '';
+      ws.getCell(`C${r}`).value = t.endLabel || '';
+      ws.getCell(`D${r}`).value = t.ticketReason || '';
+      ws.getCell(`E${r}`).value = 0;
+      ws.getCell(`F${r}`).value = Math.round(t.miles*100)/100;
+    }
+    const gc = ws.getCell(`G${r}`);
+    gc.value = { formula: `SUM(F${r}-E${r})` };
+    gc.numFmt = '#,##0.00';
+    ws.getCell(`A${r}`).alignment = centerMid;
+    ['A','B','C','D','E','F','G'].forEach(col=>{
+      const cell = ws.getCell(`${col}${r}`);
+      cell.font = bodyFont;
+      cell.border = (i===0) ? {top:med, bottom:med} : {bottom:med};
+    });
+    ws.getRow(r).height = 15.75;
+  }
+
+  const totalRow1 = firstRow + dataRowCount;
+  const totalRow2 = totalRow1 + 1;
+  ['A','D','E','F','G'].forEach(col=> ws.mergeCells(`${col}${totalRow1}:${col}${totalRow2}`));
+  ws.getCell(`B${totalRow1}`).value = 'Weekly';
+  ws.getCell(`B${totalRow2}`).value = 'Total';
+  const totalCell = ws.getCell(`G${totalRow1}`);
+  totalCell.value = { formula: `SUM(G${firstRow}:G${totalRow1-1})` };
+  totalCell.numFmt = '#,##0.00';
+  [`B${totalRow1}`,`B${totalRow2}`,`G${totalRow1}`].forEach(c=>{
+    ws.getCell(c).font = bodyFont;
+    ws.getCell(c).alignment = centerMid;
+  });
+  ['A','B','C','D','E','F','G'].forEach(col=>{
+    ws.getCell(`${col}${totalRow1}`).border = {bottom:med};
+    ws.getCell(`${col}${totalRow2}`).border = {bottom:med};
+  });
+  ws.getRow(totalRow2).height = 15.75;
+
+  ws.pageSetup.orientation = 'portrait';
+}
+
+// ---------- tabs ----------
+function switchTab(name){
+  ['trip','trips','daily','summary'].forEach(t=>{
+    $('#tab-'+t).style.display = (t===name) ? 'block' : 'none';
+  });
+  $all('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===name));
+}
+$all('.tab-btn').forEach(b=> b.addEventListener('click', ()=> switchTab(b.dataset.tab)));
+
+// ---------- wire up controls ----------
+$('#tripToggleBtn').addEventListener('click', ()=>{
+  if(active) stopTrip(); else startTrip();
+});
+$('#checkInFab').addEventListener('click', handleCheckInOut);
+
+// ---------- init ----------
+async function startApp(){
+  trips = await store.get('fm_trips', []);
+  dailyLog = await store.get('fm_daily', []);
+  const savedActive = await store.get('fm_active', null);
+
+  if(!navigator.geolocation){
+    showError('This browser does not support GPS location. Try Chrome or Safari on your phone.');
+  }
+  if(location.protocol !== 'https:' && location.hostname !== 'localhost'){
+    showError('Location access requires HTTPS. Open this file over a secure connection for GPS tracking to work.');
+  }
+
+  if(savedActive){
+    if(confirm('You have a trip in progress from a previous session. Resume tracking it?')){
+      active = savedActive;
+      beginWatch();
+      startTimer();
+    } else {
+      await store.set('fm_active', null);
+    }
+  }
+
+  renderTripTab();
+  renderStatus();
+  renderDailyStatus();
+  renderTrips();
+  renderDailyLog();
+  renderSummary();
+
+  await initCloudSync();
+  setInterval(pushUnsyncedData, 60000);
+  window.addEventListener('online', pushUnsyncedData);
+}
+
+async function init(){
+  currentUser = await store.get('fm_user', null);
+  if(!currentUser){
+    openUserModal(true);
+    return;
+  }
+  renderUserBadge();
+  const ok = await verifyReturningUser();
+  if(!ok) return;
+  await startApp();
+}
+init();
+
+})();
+</script>
+</body>
+</html>
